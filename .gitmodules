@@ -1,0 +1,6 @@
+[submodule "argmanager"]
+	path = argmanager
+	url = https://github.com/LuaniMadh/argManager
+[submodule "filemanager"]
+	path = filemanager
+	url = https://github.com/LuaniMadh/filemanager
