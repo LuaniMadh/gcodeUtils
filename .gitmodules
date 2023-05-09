@@ -4,3 +4,6 @@
 [submodule "filemanager"]
 	path = filemanager
 	url = https://github.com/LuaniMadh/filemanager
+[submodule "logme"]
+	path = logme
+	url = https://github.com/luanimadh/logme

@@ -1,50 +1,166 @@
+import static util.argmanager.argManager.*;
+
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.nio.file.FileAlreadyExistsException;
 import java.util.ArrayList;
 
-import javax.tools.Tool;
-
-import argmanager.ArgNotFoundException;
-
-import static argmanager.argManager.*;
-import filemanager.*;
+import util.argmanager.ArgNotFoundException;
+import util.filemanager.*;
+import static logme.logMe.*;
 
 class gcodeUtils {
+
+    static String[] behav = { """
+            setMinX: <type:double>
+            <help:Shifts the .gcode automatically so that the smallest X-Value is the one given here.>
+            <default:0>""",
+            """
+                    setMinY: <type:double>
+                    <help:Shifts the .gcode automatically so that the smallest Y-Value is the one given here.>
+                    <default:50>""",
+            """
+                    setMaxX: <type:double>
+                    <help:Shifts the .gcode automatically so that the biggest X-Value is the one given here.>""",
+            """
+                    setMaxY: <type:double>
+                    <help:Shifts the .gcode automatically so that the biggest Y-Value is the one given here.>""",
+            """
+                    setToolOn: <type:String>
+                    <help:Replaces the Tool On sequence>
+                    <detailHelp:Replaces the Tool On command\nSyntax: --setToolOn [current ToolOn command] [new ToolOn command]>""",
+            """
+                    setToolOff: <type:String>
+                    <help:Replaces the Tool Off sequence>
+                    <detailHelp:Replaces the Tool Off command\nSyntax: --setToolOff [current ToolOff command] [new ToolOff command]>""",
+            """
+                    regToolOff: <type:String>
+                    <help: Might be needed for optimisization if ToolOff/ToolOn can't be automatically detected>""",
+            """
+                    regToolOn: <type:String>
+                    <help: Might be needed for optimisization if ToolOff/ToolOn can't be automatically detected>""",
+            """
+                    shiftX: <type:double>
+                    <help:Shifts the whole .gcode the given amount of milimeters in the X-direction.>
+                    <detailHelp:Shifts the whole .gcode the given amount of milimeters in the X-direction.\nSyntax:--shiftX [amount of mm to shift]>""",
+            """
+                    shiftY: <type:double>
+                    <help:Shifts the whole .gcode the given amount of milimeters in the Y-direction.>
+                    <detailHelp:Shifts the whole .gcode the given amount of milimeters in the Y-direction.\nSyntax:--shiftY [amount of mm to shift]>""",
+            """
+                    size: <type: double>
+                    <help: Resizes the document with the given factor.>""",
+            """
+                    file:
+                    <help:The path of the .gcode-file that shall be modified.>
+                    <detailHelp:Insert the relative or full path to the .gcode file here that shall be modified. If the file does not exist or contains errors, you will be notified.>""",
+            """
+                    optimize: <type:boolean>
+                    <help:Optimizes the paths by their starting point. Combines disconnected paths with same start/endpoints.>""",
+            """
+                    overwrite: <type:boolean>
+                    <help:If true, the file will be overwritten>""",
+            """
+                    newFile: <type=String>
+                    <help=If the file is NOT overwritten, you can choose a new file>
+                    <detailHelp=If the file is NOT overwritten, you can choose a new file.
+                    By default a \"_new\" is added or, if it is already a new file, an index is added or increased.>""",
+            """
+                    standardPrep: <type=Boolean>
+                    <help=Applies a standard set of operations on the file in order to declutter the command \n         and use a file created by makelangelo without further tinkering.>""",
+            """
+                    genPrepGcode: <type=Boolean>
+                    <help=Generates a gcode-file for setting up a pen for plotting as standardPrep leaves no time after homing to prepare.>""",
+            """
+                    textToGcode: <type=boolean>
+                    <help=Generates gcode from the text given file.>""",
+            """
+                    textSize: <type=double> <default=3.3>
+                    <help=Sets the size of the text in mm.>""",
+    };
+
+    static File sourceFile = new File("");
+
+    // #region textToGcode
+    static double lineHeight = 4;
+    // #endregion
+
+    // #region standardPrep
+    static int bedSizeX = 300;
+    static int bedSizeY = 300;
+    static int toolOffsetX = 50;
+    static int toolOffsetY = -45;
+    static int toolOnHeight = 10;
+    static int toolOffOffsetZ = 1;
+    static String newToolOn = "";
+    static String newToolOff = "";
+
+    static double lowestX = 3;
+    static double lowestY = 3;
+
+    static String prepGcode = """
+            ; Auto generated by gcodeUtils: https://github.com/LuaniMadh/gcodeUtils
+            G28         ;   Homing
+            %s          ;   Tool Off height
+            G1 X50 Y50  ;   Move somewhere
+            %s          ;   Tool On
+            """;
+
+    // #endregion
+
+    final static double combineDist = 0.2;
 
     static ArrayList<String> gcode;
     static String ToolOn = "";
     static String ToolOff = "";
 
     public static void main(String[] args) {
-       run(args);
+        addAutoHeader(gcodeUtils.class, LOG_LEVEL.MAIN.header());
+        run(args);
     }
 
-    public static void run(String[] args){
-        setBehaviour(
-            "setMinX: <type:double> <help:Shifts the .gcode automatically so that the smallest X-Value is the one given here.>",
-            "setMinY: <type:double> <help:Shifts the .gcode automatically so that the smallest Y-Value is the one given here.>",
-            "setMaxX: <type:double> <help:Shifts the .gcode automatically so that the biggest X-Value is the one given here.>",
-            "setMaxY: <type:double> <help:Shifts the .gcode automatically so that the biggest Y-Value is the one given here.>",
-            "setToolOn: <type:String> <help:Replaces the Tool On sequence> <detailHelp:Replaces the Tool On command\nSyntax: --setToolOn [current ToolOn command] [new ToolOn command]>",
-            "setToolOff: <type:String> <help:Replaces the Tool Off sequence> <detailHelp:Replaces the Tool Off command\nSyntax: --setToolOff [current ToolOff command] [new ToolOff command]>",
-            "regToolOff: <type:String> <help: Might be needed for optimisization if ToolOff/ToolOn can't be automatically detected>",
-            "regToolOn: <type:String> <help: Might be needed for optimisization if ToolOff/ToolOn can't be automatically detected>",
-            "shiftX: <type:double> <help:Shifts the whole .gcode the given amount of milimeters in the X-direction.> <detailHelp:Shifts the whole .gcode the given amount of milimeters in the Y-direction.\nSyntax:--shiftX [amount of mm to shift]>",
-            "shiftY: <type:double> <help:Shifts the whole .gcode the given amount of milimeters in the Y-direction.> <detailHelp:Shifts the whole .gcode the given amount of milimeters in the Y-direction.\nSyntax:--shiftY [amount of mm to shift]>",
-            "size: <type: double> <help: Resizes the document with the given factor.>",
-            "file: <help:The path of the .gcode-file that shall be modified.> <detailHelp:Insert the relative or full path to the .gcode file here that shall be modified. If the file does not exist or contains errors, you will be notified.>",
-            "optimize: <type:boolean> <help:Optimizes the paths by their starting point>",
-            "overwrite: <type:boolean> <help:If true, the file will be overwritten>",
-            "newFile: <type=String> <help=If the file is NOT overwritten, you can choose a new file> <detailHelp=If the file is NOT overwritten, you can choose a new file.\nBy default a \"_new\" is added or, if it is already a new file, an index is added or increased.>");
-    parse(args);
-    try {
-        String newFilename = getNewFilename();
+    public static void run(String[] args) {
+        setBehaviour(behav);
+        parse(args);
+
+        try {
+            if (!isSet("genPrepGcode")) {
+                if (isSet("file"))
+                    sourceFile = new File(getArg("file"));
+                else
+                    sourceFile = Filemanager.chooseFile();
+
+                log("Operating on file: " + sourceFile.getAbsolutePath());
+                if (!sourceFile.exists()) {
+                    error("File not found: " + sourceFile.getAbsolutePath());
+                    System.exit(1);
+                }
+                loadFileProgressBar(getArg("file"));
+            }
+            String newFilename = getNewFilename();
+            work();
+            log("Saved to " + newFilename);
+            Filemanager.saveFile(newFilename, gcode);
+        } catch (Exception e) {
+            error(e);
+            error("Aborting...");
+            System.exit(1);
+        }
+    }
+
+    private static void loadFileProgressBar(String file) {
+        String f = file;
+        if (!new File(f).exists())
+            f = Filemanager.chooseFile(new File("")).getAbsolutePath();
+
+        if (new File(f).isDirectory() || !new File(f).exists())
+            return;
+
         new Thread() {
             @Override
             public void run() {
                 try {
-                    gcode = Filemanager.getFileContentArrayList(getArg("file"));
+                    gcode = Filemanager.getFileContentArrayList(file);
                 } catch (Exception e) {
                     e.printStackTrace();
                     System.exit(0);
@@ -53,28 +169,22 @@ class gcodeUtils {
         }.start();
 
         while (Filemanager.getProgress() != 1 || gcode == null || gcode.isEmpty()) {
-            System.out.print("Progress: " + Filemanager.getProgress() + "\r");
+            sameLineLog("Progress: " + Filemanager.getProgress() + "\r");
         }
-        System.out.println("Finished loading file                                                                ");
-        work();
-        Filemanager.saveFile(newFilename, gcode);
-    } catch (Exception e) {
-        e.printStackTrace();
-    }
+        log("Finished loading file" + " ".repeat(50));
     }
 
     private static String getNewFilename() {
         try {
-
-            if (!isSet("file")) {
-                System.err.println("Please set a file to operate on!");
-                System.exit(0);
-            }
-
-            String fullfilename = getArg("file");
+            // System.err.println("Please set a file to operate on!");
+            // System.exit(0);
+            String path = sourceFile.getParent();
+            if (path == null)
+                path = new File("").getAbsolutePath();
+            String fullfilename = (isSet("file")) ? sourceFile.getName() : "prep.gcode";
             String oldFilename = fullfilename.substring(0, fullfilename.lastIndexOf("."));
 
-            if (new File(getArg("file")).exists()) {
+            if (new File(path + "/" + fullfilename).exists() || new File(fullfilename).exists()) {
                 if (isSet("newFile")) {
                     if (getArg(boolean.class, "overwrite")) {
                         return getArg("newFile");
@@ -89,19 +199,23 @@ class gcodeUtils {
                 } else if (!getArg(Boolean.class, "overwrite")) {
                     String num = oldFilename.substring(oldFilename.indexOf("_") + 1, oldFilename.length());
                     // _new or _001
-                    if (oldFilename.endsWith("_new") && !(new File(oldFilename.substring(0, oldFilename.lastIndexOf("_") + 1) + "001.gcode").exists())) {
+                    if (oldFilename.endsWith("_new")
+                            && !(new File(oldFilename.substring(0, oldFilename.lastIndexOf("_") + 1) + "001.gcode")
+                                    .exists())) {
                         return oldFilename.substring(0, oldFilename.indexOf("_") + 1) + "001.gcode";
-                    } else if ((oldFilename.contains("_") && isInt(num)) || (new File(oldFilename.substring(0, oldFilename.indexOf("_") + 1) + "001.gcode").exists()) || (new File(oldFilename + "_new.gcode").exists())) {
-                        if(!isInt(num)){
+                    } else if ((oldFilename.contains("_") && isInt(num))
+                            || (new File(oldFilename.substring(0, oldFilename.indexOf("_") + 1) + "001.gcode").exists())
+                            || (new File(oldFilename + "_new.gcode").exists())) {
+                        if (!isInt(num)) {
                             num = "000";
                         }
-                        if(!oldFilename.contains("_"))
+                        if (!oldFilename.contains("_"))
                             oldFilename = oldFilename + "_";
                         int iteration = 1;
                         String fnBlock = oldFilename.substring(0, oldFilename.indexOf("_") + 1);
-                        String fn = fnBlock + AllDigitsOfInt(Integer.parseInt(num) + iteration) + ".gcode";
-                        while(new File(fn).exists()){
-                            fn = fnBlock + AllDigitsOfInt(Integer.parseInt(num) + iteration) + ".gcode";
+                        String fn = fnBlock + CapIntToLength4(Integer.parseInt(num) + iteration) + ".gcode";
+                        while (new File(fn).exists()) {
+                            fn = fnBlock + CapIntToLength4(Integer.parseInt(num) + iteration) + ".gcode";
                             iteration++;
                         }
                         return fn;
@@ -110,15 +224,17 @@ class gcodeUtils {
 
                     }
                 } else {
-                    return getArg("file");
+                    return fullfilename;
                 }
+            } else if (isSet("genPrepGcode")) {
+                return fullfilename;
             } else {
-                System.err.println(getArg("file"));
+                error(sourceFile.getName() + " does not exist.");
                 throw new FileNotFoundException();
             }
         } catch (Exception e) {
             e.printStackTrace();
-            System.exit(0);
+            System.exit(1);
         }
         return "ERRORgcode.txt";
     }
@@ -132,7 +248,7 @@ class gcodeUtils {
         return true;
     }
 
-    private static String AllDigitsOfInt(int i) {
+    private static String CapIntToLength4(int i) {
         if (i >= 100) {
             return "" + i;
         } else if (i >= 10) {
@@ -144,34 +260,115 @@ class gcodeUtils {
 
     public static void work() {
         try {
+            boolean somethingDone = false;
+            if (isSet("textToGcode")) {
+                stdToolOnOff();
+                textToGcode.loadChars();
+                // Home, Tool off
+                ArrayList<String> text = gcode;
+                gcode = new ArrayList<String>();
+                gcode.add("G28");
+                gcode.add(ToolOff);
+
+                double cursor_x = 0;
+                double cursor_y = 0;
+                for (String line : text) {
+                    for (char c : line.toCharArray()) {
+                            var charGcode = textToGcode.getGcode(c, cursor_x, cursor_y);
+                            gcode.addAll(charGcode.gcode());
+                            cursor_x += charGcode.advance();
+                    }
+                    cursor_y -= lineHeight;
+                    cursor_x = 0;
+                }
+                somethingDone = true;
+            }
+            if (isSet("genPrepGcode")) {
+                stdToolOnOff();
+                gcode = strToList(String.format(prepGcode, ToolOff, ToolOn));
+                return;
+            }
+            if (isSet("standardPrep")) {
+                double maxX = findMaxVal("X");
+                double minY = findMinVal("Y");
+                shift("X", bedSizeX - toolOffsetX - maxX - lowestX);
+                shift("Y", -toolOffsetY - minY + lowestY);
+                newToolOn = "G0 Z" + toolOnHeight;
+                newToolOff = "G0 Z" + (toolOnHeight + toolOffOffsetZ);
+                optimize();
+                setTool();
+                // find G28(Home) and add ToolOff afterwards
+                for (int i = 0; i < gcode.size(); i++)
+                    if (gcode.get(i).startsWith("G28")) {
+                        gcode.add(i + 1, newToolOff);
+                        break;
+                    }
+                // remove breaking
+                for (int i = 0; i < gcode.size(); i++)
+                    if (gcode.get(i).startsWith("M0")) {
+                        gcode.remove(i);
+                        break;
+                    }
+                somethingDone = true;
+            }
             if (isSet("setMinX")) {
                 double minVal = findMinVal("X");
                 shift("X", (getArg(Double.class, "setMinX") - minVal));
-            } else if (isSet("setMinY")) {
+                somethingDone = true;
+            }
+            if (isSet("setMinY")) {
                 double minVal = findMinVal("Y");
                 shift("Y", (getArg(Double.class, "setMinY") - minVal));
-            } else if (isSet("setMaxX")) {
+                somethingDone = true;
+            }
+            if (isSet("setMaxX")) {
                 double maxVal = findMaxVal("X");
                 shift("X", (getArg(Double.class, "setMaxX") - maxVal));
-            } else if (isSet("setMaxY")) {
+                somethingDone = true;
+            }
+            if (isSet("setMaxY")) {
                 double maxVal = findMaxVal("Y");
                 shift("Y", (getArg(Double.class, "setMaxY") - maxVal));
-            } else if (isSet("setToolOn") || isSet("setToolOff")) {
+                somethingDone = true;
+            }
+            if (isSet("setToolOn") || isSet("setToolOff")) {
                 setTool();
-            } else if (isSet("shiftX") || isSet("shiftY")) {
+                somethingDone = true;
+            }
+            if (isSet("shiftX") || isSet("shiftY")) {
                 if (isSet("shiftX")) {
-                    shift("X", getArg(Integer.class, "shiftX"));
+                    shift("X", getArg(double.class, "shiftX"));
                 }
                 if (isSet("shiftY")) {
-                    shift("Y", getArg(Integer.class, "shiftY"));
+                    shift("Y", getArg(double.class, "shiftY"));
                 }
-            } else if (getArg(Boolean.class, "optimize")) {
-                optimize();
-            } else {
-                System.out.println("Please select a command. For further information use --help.");
+                somethingDone = true;
             }
-        } catch (Exception e) {
-            e.printStackTrace();
+            if (getArg(Boolean.class, "optimize")) {
+                optimize();
+                somethingDone = true;
+            }
+            if (!somethingDone) {
+                log("Please select a command. For further information use --help.");
+            }
+        }catch(
+
+    Exception e)
+    {
+        e.printStackTrace();
+    }
+    }
+
+    private static void stdToolOnOff() {
+        if (isSet("setToolOn"))
+            ToolOn = getArg("setToolOn");
+        else {
+            ToolOn = "G0 Z" + toolOnHeight;
+        }
+        if (isSet("setToolOff"))
+            ToolOn = getArg("setToolOff");
+        else {
+            ToolOff = "G0 Z" + (toolOnHeight + toolOffOffsetZ);
         }
     }
 
@@ -181,31 +378,31 @@ class gcodeUtils {
             ToolOn = ((isSet("regToolOn")) ? getArg("regToolOn") : ToolOn);
             ToolOff = ((isSet("regToolOff")) ? getArg("regToolOff") : ToolOff);
 
-            boolean repToolOn = isSet("setToolOn");
-            boolean repToolOff = isSet("setToolOff");
+            boolean repToolOn = !ToolOn.isBlank();
+            boolean repToolOff = !ToolOff.isBlank();
             int replacedToolOn = 0;
             int replacedToolOff = 0;
-            String newToolOn = (isSet("setToolOn") ? getArg("setToolOn") : "");
-            String newToolOff = (isSet("setToolOff") ? getArg("setToolOff") : "");
+            String ntOn = (isSet("setToolOn") ? getArg("setToolOn") : newToolOn);
+            String ntOff = (isSet("setToolOff") ? getArg("setToolOff") : newToolOff);
             ArrayList<String> newGcode = new ArrayList<String>();
             for (String s : gcode) {
                 if (repToolOn && s.contains(ToolOn)) {
-                    newGcode.add(s.replace(ToolOn, newToolOn));
+                    newGcode.add(s.replace(ToolOn, ntOn));
                     replacedToolOn++;
                     continue;
                 }
                 if (repToolOff && s.contains(ToolOff)) {
-                    newGcode.add(s.replace(ToolOff, newToolOff));
+                    newGcode.add(s.replace(ToolOff, ntOff));
                     replacedToolOff++;
                     continue;
                 }
                 newGcode.add(s);
             }
             if (isSet("setToolOn")) {
-                System.out.println("Replaced " + replacedToolOn + " times ToolOn");
+                log("Replaced " + replacedToolOn + " times ToolOn");
             }
             if (isSet("setToolOff")) {
-                System.out.println("Replaced " + replacedToolOff + " times ToolOff");
+                log("Replaced " + replacedToolOff + " times ToolOff");
             }
             gcode = newGcode;
         } catch (ArgNotFoundException e) {
@@ -218,6 +415,8 @@ class gcodeUtils {
         int i = 0;
         for (String s : gcode) {
             i++;
+            if(s.contains("\n"))
+                log("Line " + i + " contains a linebreak. This may cause problems: " + s + "\n");
             // if(i%100 == 0)
             if (s == null)
                 continue;
@@ -255,7 +454,7 @@ class gcodeUtils {
                 if (startIndex >= comment)
                     break;
                 int endIndex = s.indexOf(" ", s.indexOf(Letter));
-                if (endIndex >= comment)
+                if (endIndex >= comment || endIndex == -1)
                     endIndex = comment;
                 String sub = s.substring(startIndex, endIndex);
                 double v = Double.parseDouble(sub);
@@ -268,7 +467,6 @@ class gcodeUtils {
     }
 
     public static void shift(String Letter, double mm) {
-        System.out.println(mm);
         for (int i = 0; i < gcode.size(); i++) {
             String s = gcode.get(i);
             if (s == null)
@@ -288,10 +486,36 @@ class gcodeUtils {
                 String sub = s.substring(startIndex, endIndex);
                 double v = Double.parseDouble(sub);
                 double nv = v += mm;
-                s = s.substring(0, startIndex) + nv + s.substring(endIndex, s.length());
+                s = s.substring(0, startIndex) + capString(nv, 8) + s.substring(endIndex, s.length());
             }
             gcode.set(i, s);
         }
+        log("Gcode shifted " + mm + "mm in " + Letter + " direction.");
+    }
+
+    static String capString(Object o, int length) {
+        return capString("" + o, length);
+    }
+
+    /**
+     * Cuts a string to a given length and removes trailing zeros
+     * 
+     * @param length
+     * @return
+     */
+    static String capString(String str, int length) {
+        if (str.length() > length) {
+            str = str.substring(0, length);
+        }
+        if (str.contains(".")) {
+            while (str.endsWith("0")) {
+                str = str.substring(0, str.length() - 1);
+            }
+            if (str.endsWith(".")) {
+                str = str.substring(0, str.length() - 1);
+            }
+        }
+        return str;
     }
 
     /**
@@ -309,11 +533,12 @@ class gcodeUtils {
      * before. If you want to check for the right format use isInFormat()
      */
     public static void autoGetToolOnOff() {
-        int drop = gcode.size() / 2;
+        // Find drop
+        int drop = (int) ((double) gcode.size() / 2.0);
         boolean foundDrop = false;
         if (!gcode.get(drop).startsWith("G1")) {
             for (int i = drop; i > 1; i--) {
-                if (gcode.get(drop).startsWith("G1")) {
+                if (gcode.get(i).startsWith("G1")) {
                     drop = i;
                     foundDrop = true;
                     break;
@@ -321,7 +546,7 @@ class gcodeUtils {
             }
             if (!foundDrop) {
                 for (int i = drop; i < gcode.size() - 1; i++) {
-                    if (gcode.get(drop).startsWith("G1")) {
+                    if (gcode.get(i).startsWith("G1")) {
                         drop = i;
                         foundDrop = true;
                         break;
@@ -329,6 +554,7 @@ class gcodeUtils {
                 }
                 if (!foundDrop) {
                     // No drop found
+                    log("Couldn't find a drop");
                     return;
                 }
             }
@@ -336,18 +562,28 @@ class gcodeUtils {
             foundDrop = true;
         }
 
+        boolean gotNewToolOn = false;
+        boolean gotNewToolOff = false;
         // Tool on
-        for (int i = drop; i > 0 && ToolOn.isEmpty(); i--) {
+        for (int i = drop; i > 0; i--) {
             if (!gcode.get(i).startsWith("G1")) {
-                ToolOn = gcode.get(i);
+                gotNewToolOn = true;
+                ToolOn = "" + gcode.get(i);
+                break;
             }
         }
-        for (int i = drop; i < gcode.size() && ToolOff.isEmpty(); i++) {
+        // Tool off
+        for (int i = drop; i < gcode.size(); i++) {
             if (!gcode.get(i).startsWith("G1")) {
-                ToolOff = gcode.get(i);
+                gotNewToolOff = true;
+                ToolOff = "" + gcode.get(i);
+                break;
             }
         }
-
+        if (!gotNewToolOff || !gotNewToolOn) {
+            log("Could not auto-get ToolOn/ToolOff. " + "\nDrop: " + drop);
+        }
+        log("Automatically found ToolOn & ToolOff: " + ToolOn + ", " + ToolOff);
     }
 
     /**
@@ -365,8 +601,6 @@ class gcodeUtils {
      * @return
      */
     public static boolean isInFormat() {
-        // String TOff = ToolOff;
-        // String TOn = ToolOn;
         autoGetToolOnOff();
         if (ToolOff.isEmpty() || ToolOn.isEmpty()) {
             return false;
@@ -374,18 +608,32 @@ class gcodeUtils {
         return true;
     }
 
+    @SuppressWarnings("unchecked")
     public static void optimize() {
         // Getpaths && toolOn && toolOff
         try {
+            log("Optimizing");
             if (!isInFormat()) {
-                System.out.println(
-                        "Not in right format: \nStart sequence\nTool off\nFor each path:\n    Movement to the beginning of the path\n    tool on\n    the path\n    Tool off\nEnd sequence");
+                log(
+                        """
+                                Not in right format:
+                                        Start sequence
+                                        Tool off
+                                        For each path:
+                                            Movement to the beginning of the path
+                                            tool on
+                                            the path
+                                            Tool off
+                                        End sequence""");
                 return;
             }
             if ((isSet("regToolOn") || isSet("regToolOff"))
                     && !(isSet("regToolOn") && isSet("regToolOff"))) {
-                System.out.println("Please set both Tool On and Tool Off. One isn't enough.");
+                log("Please set both Tool On and Tool Off. One isn't enough.");
                 return;
+            }
+            if (isSet("setToolOn") || isSet("setToolOff")) {
+                autoGetToolOnOff();
             }
         } catch (ArgNotFoundException e) {
             e.printStackTrace();
@@ -413,7 +661,7 @@ class gcodeUtils {
             }
         }
         if (startOfFirstPath == -1 || endOfLastPath == -1) {
-            System.out.println("Could't find end/start of the paths");
+            log("Could't find end/start of the paths");
             return;
         }
 
@@ -482,7 +730,7 @@ class gcodeUtils {
                     break;
                 case toolOff:
                     // This should never be
-                    System.out.println("Something's wrong");
+                    log("Something's wrong");
                     break;
             }
         }
@@ -492,21 +740,40 @@ class gcodeUtils {
         double currentY = 0;
         while (!paths.isEmpty()) {
             double lowestDistance = distance(currentX, currentY, paths.get(0).startX(), paths.get(0).startY());
+            boolean lowestDistanceReverse = false;
             gcodepath nextPath = paths.get(0);
             for (gcodepath gcp : paths) {
+                boolean reverse = false;
                 double dist = distance(currentX, currentY, gcp.startX(), gcp.startY());
+                double rDist = distance(currentX, currentY, gcp.endX(), gcp.endY());
+                if (rDist < dist) {
+                    dist = rDist;
+                    reverse = true;
+                }
                 if (dist < lowestDistance) {
                     lowestDistance = dist;
                     nextPath = gcp;
+                    lowestDistanceReverse = reverse;
                 }
                 if (lowestDistance == 0) {
                     break;
                 }
             }
             paths.remove(nextPath);
-            sortedPaths.add(nextPath);
-            currentX = nextPath.endX();
-            currentY = nextPath.endY();
+            if (lowestDistance <= combineDist && !sortedPaths.isEmpty()) {
+                gcodepath previous = sortedPaths.remove(sortedPaths.size() - 1);
+                gcodepath ncombined = previous.combine(nextPath, lowestDistanceReverse);
+                sortedPaths.add(ncombined);
+            } else
+                sortedPaths.add(lowestDistanceReverse ? nextPath.reverse() : nextPath);
+            if (!lowestDistanceReverse) {
+                currentX = nextPath.endX();
+                currentY = nextPath.endY();
+            } else {
+                currentX = nextPath.startX();
+                currentY = nextPath.startY();
+            }
+
         }
 
         ArrayList<String> newGcode = new ArrayList<String>();
@@ -532,8 +799,13 @@ class gcodeUtils {
     }
 
     private record gcodepath(double startX, double startY, double endX, double endY, ArrayList<String> content) {
+
+        private String firstLine() {
+            return "G0 X" + startX + " Y" + startY;
+        }
+
         public String toString() {
-            String returning = "G0 X" + startX + " Y" + startY + "\n" + ToolOn;
+            String returning = firstLine() + "\n" + ToolOn;
             for (String s : content) {
                 returning += "\n" + s;
             }
@@ -544,5 +816,51 @@ class gcodeUtils {
         public String startLine() {
             return "G0 X" + startX + " Y" + startY;
         }
+
+        /**
+         * If reverse is true, the second path will be reversed
+         * 
+         * @param gcp
+         * @param reverse
+         * @return
+         */
+        public gcodepath combine(gcodepath gcp, boolean reverse) {
+            ArrayList<String> nc = new ArrayList<String>();
+            // nc.addAll(reverse?reverseList(content):content);
+            // nc.addAll(gcp.content());
+            // var res = new gcodepath(reverse?endX:startX, reverse?endY:startY, gcp.endX(),
+            // gcp.endY(), nc);
+            nc.addAll(content);
+            if (!reverse)
+                nc.add("G1 X" + gcp.startX() + " Y" + gcp.startY());
+            nc.addAll(reverse ? reverseList(gcp.content) : gcp.content());
+            if (reverse)
+                nc.add("G1 X" + gcp.startX() + " Y" + gcp.startY());
+            var res = new gcodepath(startX, startY, reverse ? gcp.startX() : gcp.endX(),
+                    reverse ? gcp.startY() : gcp.endY(), nc);
+            return res;
+        }
+
+        public gcodepath reverse() {
+            ArrayList<String> nc = new ArrayList<String>(content.size() + 1);
+            nc.addAll(reverseList(content));
+            nc.add("G1 X" + startX + " Y" + startY);
+            return new gcodepath(endX, endY, startX, startY, nc);
+        }
     };
+
+    private static <T> ArrayList<T> reverseList(ArrayList<T> l) {
+        ArrayList<T> res = new ArrayList<T>(l.size());
+        for (int i = l.size() - 1; i >= 0; i--) {
+            res.add(l.get(i));
+        }
+        return res;
+    }
+
+    public static ArrayList<String> strToList(String str) {
+        ArrayList<String> res = new ArrayList<>();
+        for (String s : str.split("\n"))
+            res.add(s);
+        return res;
+    }
 }
